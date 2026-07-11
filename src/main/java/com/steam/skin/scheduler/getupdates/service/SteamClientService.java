@@ -14,21 +14,16 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class SteamClientService {
 
-    private static final String DEPOT_ID = "731";
-    private static final Pattern BUILD_ID_PATTERN =
-            Pattern.compile("\"buildid\"\\s*\"(\\d+)\"");
-
-    private static final Pattern MANIFEST_PATTERN =
-            Pattern.compile(
-                    "\"" + DEPOT_ID + "\"\\s*\\{.*?\"manifests\"\\s*\\{.*?\"public\"\\s*\\{.*?\"gid\"\\s*\"(\\d+)\"",
-                    Pattern.DOTALL
-            );
 
     @Autowired
     private SteamClientConnector steamClientConnector;
@@ -40,11 +35,27 @@ public class SteamClientService {
     private String token;
     private long steamId;
     private SteamCMSession steamSession;
+    private final Map<Long, CompletableFuture<UpdateStatus>> pendingRequests = new ConcurrentHashMap<>();
 
 
+    private static final String DEPOT_ID = "731";
+    private static final Pattern BUILD_ID_PATTERN =
+            Pattern.compile("\"buildid\"\\s*\"(\\d+)\"");
 
-    public void connect() throws Exception {
+    private static final Pattern MANIFEST_PATTERN =
+            Pattern.compile(
+                    "\"" + DEPOT_ID + "\"\\s*\\{.*?\"manifests\"\\s*\\{.*?\"public\"\\s*\\{.*?\"gid\"\\s*\"(\\d+)\"",
+                    Pattern.DOTALL
+            );
+
+
+    public CompletableFuture<UpdateStatus> connect(long steamId) throws Exception {
+        CompletableFuture<UpdateStatus> future = new CompletableFuture<>();
+        pendingRequests.put(steamId, future);
+        future.orTimeout(30, TimeUnit.SECONDS)
+                .whenComplete((res, ex) -> pendingRequests.remove(steamId));
         steamClientConnector.connect();
+        return future;
     }
 
     @EventListener
@@ -103,7 +114,15 @@ public class SteamClientService {
             ContentInfo contentInfo = parsePICSResponseBuffer(response.getAppsList().get(0).getBuffer().toStringUtf8());
             UpdateStatus status = versionsCheckService.checkForUpdates(contentInfo.getGameBuildId(), contentInfo.getManifestId(), (int) Instant.now().getEpochSecond());
             disconnect();
+            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
+            if (future != null) {
+                future.complete(status);
+            }
         } catch (Exception e) {
+            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
+            if (future != null) {
+                future.completeExceptionally(e);
+            }
             throw new RuntimeException("Cannot parse PICS response", e);
         }
     }

@@ -1,13 +1,19 @@
 package com.steam.skin.scheduler.getupdates.controller;
 
+import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.service.SteamClientService;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 @RestController
 @RequestMapping("/updates")
@@ -19,12 +25,24 @@ public class SteamUpdatesController {
     @Autowired
     private SteamClientService steamClientService;
 
-    @PostMapping("/updates/check")
-    public ResponseEntity<?> checkUpdates(String login, long steamId, HttpServletRequest request) throws Exception {
-        String token = steamAuthService.getToken(request);
-        steamClientService.prepareLogin(login, token, steamId);
-        steamClientService.connect();
-        return ResponseEntity.ok("Updates have been checked");
-    }
+    @PostMapping("/check")
+    public ResponseEntity<?> checkUpdates(@RequestParam String login,
+                                          @RequestParam long steamId,
+                                          HttpServletRequest request) {
+        try {
+            String token = steamAuthService.getToken(request);
+            steamClientService.prepareLogin(login, token, steamId);
 
+            CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect(steamId);
+            UpdateStatus status = futureStatus.join();
+            return ResponseEntity.ok(status);
+
+        } catch (CompletionException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error checking updates: " + e.getCause().getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
+                    .body("Steam action timed out or failed: " + e.getMessage());
+        }
+    }
 }
