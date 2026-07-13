@@ -2,7 +2,6 @@ package com.steam.skin.scheduler.userauth.controller;
 
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.creds.Credentials;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
-import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,8 +27,8 @@ public class SteamAuthController {
     }
 
     @PostMapping("/token")
-    public ResponseEntity<?> steamTokenGenerate(String mailCode, HttpServletResponse response) throws InterruptedException {
-        steamAuthService.generateSteamClientToken(mailCode, response);
+    public ResponseEntity<?> steamTokenGenerate(String username, String mailCode) throws InterruptedException {
+        steamAuthService.generateSteamClientToken(username, mailCode);
         return ResponseEntity.ok("Token saved");
     }
 }

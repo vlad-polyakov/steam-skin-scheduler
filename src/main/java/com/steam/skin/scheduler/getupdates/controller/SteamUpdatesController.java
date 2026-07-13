@@ -2,8 +2,8 @@ package com.steam.skin.scheduler.getupdates.controller;
 
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.service.SteamClientService;
+import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamToken;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,14 +26,12 @@ public class SteamUpdatesController {
     private SteamClientService steamClientService;
 
     @PostMapping("/check")
-    public ResponseEntity<?> checkUpdates(@RequestParam String login,
-                                          @RequestParam long steamId,
-                                          HttpServletRequest request) {
+    public ResponseEntity<?> checkUpdates(@RequestParam String login) {
         try {
-            String token = steamAuthService.getToken(request);
-            steamClientService.prepareLogin(login, token, steamId);
+            SteamToken token = steamAuthService.getToken(login);
+            steamClientService.prepareLogin(login, token.getToken(), token.getSteamId());
 
-            CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect(steamId);
+            CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect(token.getSteamId());
             UpdateStatus status = futureStatus.join();
             return ResponseEntity.ok(status);
 

@@ -6,9 +6,9 @@ import com.steam.skin.scheduler.userauth.entity.steam.auth.common.session.SteamS
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.session.SteamSessionLoginResponse;
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamAuthTokenInfoContainerResponse;
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamAuthTokenInfoResponse;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamToken;
+import com.steam.skin.scheduler.userauth.repository.SteamTokenRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.RSAPublicKeySpec;
+import java.time.Instant;
 import java.util.Base64;
 
 @Service
@@ -42,9 +43,12 @@ public class SteamAuthService {
     private static final String STEAM_SESSION_POLL_ENDPOINT = "https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1";
     private static final int PERSISTANCE_SESSION = 1;
     private static final int PLATFORM_TYPE = 1;
-    private static final String TOKEN_COOKIE_NAME = "steamClientToken";
+    private static final long EXPIRY_SECONDS = 60 * 60 * 24 * 30;
 
     private SteamSessionLoginResponse steamSession;
+
+    @Autowired
+    private SteamTokenRepository tokenRepository;
 
     public SteamAuthService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -180,26 +184,20 @@ public class SteamAuthService {
         return null;
     }
 
-    public void saveToken(HttpServletResponse response, String token) {
-        Cookie cookie = new Cookie(TOKEN_COOKIE_NAME, token);
-
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(60 * 60 * 24 * 30);
-        response.addCookie(cookie);
+    public void saveToken(long steamId, String username, String token) {
+        SteamToken steamToken = SteamToken.builder()
+                .steamId(steamId)
+                .username(username)
+                .token(token)
+                .expiryDate(Instant.now().plusSeconds(EXPIRY_SECONDS))
+                .build();
+        tokenRepository.save(steamToken);
     }
 
-    public String getToken(HttpServletRequest request) {
-        if (request.getCookies() == null) {
-            return null;
-        }
-        for (Cookie cookie : request.getCookies()) {
-            if (TOKEN_COOKIE_NAME.equals(cookie.getName())) {
-                return cookie.getValue();
-            }
-        }
-        return null;
+    public SteamToken getToken(String username) {
+        return tokenRepository.findByUsername(username)
+                .filter(tokenEntity -> tokenEntity.getExpiryDate().isAfter(Instant.now()))
+                .orElse(null);
     }
 
     public void generateSteamClientSession(String login, String password) throws IllegalBlockSizeException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeySpecException, BadPaddingException, InvalidKeyException {
@@ -207,10 +205,10 @@ public class SteamAuthService {
         triggerSteamMailCodeConfirmation(this.steamSession);
     }
 
-    public void generateSteamClientToken(String mailCode, HttpServletResponse httpServletResponse) throws InterruptedException {
+    public void generateSteamClientToken(String username, String mailCode) throws InterruptedException {
         performSteamClientSessionUpdateWithMailCode(this.steamSession, mailCode);
         String tokenInfo = waitForSteamTokens(this.steamSession);
-        saveToken(httpServletResponse, tokenInfo);
+        saveToken(Long.parseLong(steamSession.getSteamid()), username, tokenInfo);
     }
 
 
