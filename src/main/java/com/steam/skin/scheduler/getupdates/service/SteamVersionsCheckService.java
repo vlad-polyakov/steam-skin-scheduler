@@ -1,6 +1,7 @@
 package com.steam.skin.scheduler.getupdates.service;
 
 import com.steam.skin.scheduler.getupdates.entity.pics.CS2VersionEntity;
+import com.steam.skin.scheduler.getupdates.entity.pics.ContentInfo;
 import com.steam.skin.scheduler.getupdates.entity.pics.DepotVersionEntity;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.repository.CS2VersionRepository;
@@ -43,5 +44,26 @@ public class SteamVersionsCheckService {
                 .build());
 
         return UpdateStatus.UPDATE_REQUIRED;
+    }
+
+    public ContentInfo getContentInfoForDownload() {
+        String manifestId = null;
+        String gameBuild = null;
+        Optional<CS2VersionEntity> lastBuildOpt = cs2VersionRepository.findFirstByOrderByIdDesc();
+        if (lastBuildOpt.isPresent()) {
+            gameBuild = lastBuildOpt.get().getBuildId();
+        }
+
+        Optional<DepotVersionEntity> lastDepotOpt = depotVersionRepository.findFirstByOrderByIdDesc();
+        if (lastDepotOpt.isPresent()) {
+            manifestId = lastDepotOpt.get().getManifestId();
+        }
+
+        if(gameBuild == null || manifestId == null) {
+            throw new RuntimeException("No required data to download depot");
+        }
+
+        return ContentInfo.builder().gameBuildId(gameBuild).manifestId(manifestId).build();
+
     }
 }

@@ -9,7 +9,6 @@ import lombok.*;
 @NoArgsConstructor
 public class ContentInfo {
     private String manifestId;
-    private UpdateStatus status;
     private String gameBuildId;
 
 }

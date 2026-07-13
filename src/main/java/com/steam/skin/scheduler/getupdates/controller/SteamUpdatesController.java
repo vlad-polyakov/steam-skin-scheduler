@@ -1,16 +1,15 @@
 package com.steam.skin.scheduler.getupdates.controller;
 
+import com.steam.skin.scheduler.getupdates.entity.pics.ContentInfo;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.service.SteamClientService;
+import com.steam.skin.scheduler.getupdates.service.SteamVersionsCheckService;
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamToken;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -25,6 +24,9 @@ public class SteamUpdatesController {
     @Autowired
     private SteamClientService steamClientService;
 
+    @Autowired
+    private SteamVersionsCheckService steamVersionsCheckService;
+
     @PostMapping("/check")
     public ResponseEntity<?> checkUpdates(@RequestParam String login) {
         try {
@@ -33,6 +35,7 @@ public class SteamUpdatesController {
 
             CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect(token.getSteamId());
             UpdateStatus status = futureStatus.join();
+
             return ResponseEntity.ok(status);
 
         } catch (CompletionException e) {
@@ -42,5 +45,11 @@ public class SteamUpdatesController {
             return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
                     .body("Steam action timed out or failed: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/buildInfo")
+    public ResponseEntity<?> getBuildAndDepotInfo() throws RuntimeException {
+        ContentInfo contentInfo = steamVersionsCheckService.getContentInfoForDownload();
+        return ResponseEntity.ok(contentInfo);
     }
 }
