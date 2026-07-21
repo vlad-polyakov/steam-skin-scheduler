@@ -60,6 +60,29 @@ public class SteamPacketProcessor {
         );
     }
 
+    public static SteamPacket buildDepotKeyPacket(String depotId, int sessionId, long steamId) {
+        CMsgClientGetDepotDecryptionKey body = CMsgClientGetDepotDecryptionKey.newBuilder().setDepotId(Integer.parseInt(depotId)).setAppId(730).build();
+        SteammessagesBase.CMsgProtoBufHeader header = SteammessagesBase.CMsgProtoBufHeader.newBuilder()
+                .setClientSessionid(sessionId)
+                .setSteamid(steamId)
+                .build();
+        return new SteamPacket(
+                EnumsClientserver.EMsg.k_EMsgClientGetDepotDecryptionKey_VALUE,
+                true,
+                header,
+                body.toByteArray()
+        );
+    }
+
+    public static CMsgClientGetDepotDecryptionKeyResponse handleDepotKeyResponse(SteamPacket packet) {
+        try {
+            byte[] body = packet.getBodyBytes();
+            return CMsgClientGetDepotDecryptionKeyResponse.parseFrom(body);
+        } catch (Exception e) {
+            throw new RuntimeException("Cannot parse Depot Key response", e);
+        }
+    }
+
     public static SteammessagesClientserverLogin.CMsgClientLogonResponse handleLogonResponse(SteamPacket packet) {
         try {
             byte[] body = packet.getBodyBytes();

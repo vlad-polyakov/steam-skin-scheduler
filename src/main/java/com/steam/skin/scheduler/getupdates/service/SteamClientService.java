@@ -38,7 +38,7 @@ public class SteamClientService {
     private final Map<Long, CompletableFuture<UpdateStatus>> pendingRequests = new ConcurrentHashMap<>();
 
 
-    private static final String DEPOT_ID = "731";
+    private static final String DEPOT_ID = "2347770";
     private static final Pattern BUILD_ID_PATTERN =
             Pattern.compile("\"buildid\"\\s*\"(\\d+)\"");
 
@@ -73,6 +73,11 @@ public class SteamClientService {
         steamClientConnector.sendPacket(packet);
     }
 
+    public void requestDepotKey() {
+        SteamPacket packet = SteamPacketProcessor.buildDepotKeyPacket(DEPOT_ID, steamSession.getSessionId(), steamId);
+        steamClientConnector.sendPacket(packet);
+    }
+
     public void disconnect() {
         steamClientConnector.disconnect();
     }
@@ -89,6 +94,7 @@ public class SteamClientService {
         switch (packet.getEMsg()) {
             case EnumsClientserver.EMsg.k_EMsgClientLogOnResponse_VALUE -> handleLogon(packet);
             case EnumsClientserver.EMsg.k_EMsgClientPICSProductInfoResponse_VALUE -> handleProductInfo(packet);
+            case EnumsClientserver.EMsg.k_EMsgClientGetDepotDecryptionKeyResponse_VALUE -> handleDepotKey(packet);
         }
     }
 
@@ -124,6 +130,18 @@ public class SteamClientService {
                 future.completeExceptionally(e);
             }
             throw new RuntimeException("Cannot parse PICS response", e);
+        }
+    }
+
+    private void handleDepotKey(SteamPacket packet) {
+        try {
+            var response = SteamPacketProcessor.handleDepotKeyResponse(packet);
+
+            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
+
+        } catch (Exception e) {
+
+            throw new RuntimeException("Cannot parse Depot Key response", e);
         }
     }
 
