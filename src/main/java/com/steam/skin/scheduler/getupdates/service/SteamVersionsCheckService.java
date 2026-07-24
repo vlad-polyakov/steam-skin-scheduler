@@ -6,8 +6,10 @@ import com.steam.skin.scheduler.getupdates.entity.pics.DepotVersionEntity;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.repository.CS2VersionRepository;
 import com.steam.skin.scheduler.getupdates.repository.DepotVersionRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -65,5 +67,13 @@ public class SteamVersionsCheckService {
 
         return ContentInfo.builder().gameBuildId(gameBuild).manifestId(manifestId).build();
 
+    }
+
+    @Transactional
+    public void updateDepotKey(long manifestId, byte[] depotKey) {
+        DepotVersionEntity entity = depotVersionRepository.findByManifestId(String.valueOf(manifestId))
+                .orElseThrow(() -> new EntityNotFoundException("Version entry not found"));
+
+        entity.setDepotKey(depotKey);
     }
 }

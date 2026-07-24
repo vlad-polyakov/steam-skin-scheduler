@@ -7,7 +7,7 @@ import com.steam.skin.scheduler.getupdates.connector.event.SteamPacketReceivedEv
 import com.steam.skin.scheduler.getupdates.entity.pics.ContentInfo;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamPacket;
-import com.steam.skin.scheduler.getupdates.entity.websocket.session.SteamCMSession;
+import com.steam.skin.scheduler.getupdates.entity.websocket.session.SteamCMSessionContext;
 import com.steam.skin.scheduler.getupdates.packet.SteamPacketProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
@@ -31,10 +31,7 @@ public class SteamClientService {
     @Autowired
     private SteamVersionsCheckService versionsCheckService;
 
-    private String username;
-    private String token;
-    private long steamId;
-    private SteamCMSession steamSession;
+    private SteamCMSessionContext steamSession;
     private final Map<Long, CompletableFuture<UpdateStatus>> pendingRequests = new ConcurrentHashMap<>();
 
 
@@ -49,11 +46,11 @@ public class SteamClientService {
             );
 
 
-    public CompletableFuture<UpdateStatus> connect(long steamId) throws Exception {
+    public CompletableFuture<UpdateStatus> connect() throws Exception {
         CompletableFuture<UpdateStatus> future = new CompletableFuture<>();
-        pendingRequests.put(steamId, future);
+        pendingRequests.put(steamSession.getSteamId(), future);
         future.orTimeout(30, TimeUnit.SECONDS)
-                .whenComplete((res, ex) -> pendingRequests.remove(steamId));
+                .whenComplete((res, ex) -> pendingRequests.remove(steamSession.getSteamId()));
         steamClientConnector.connect();
         return future;
     }
@@ -64,7 +61,7 @@ public class SteamClientService {
     }
 
     public void login() {
-        SteamPacket packet = SteamPacketProcessor.buildLogonPacket(username, token, steamId);
+        SteamPacket packet = SteamPacketProcessor.buildLogonPacket(this.steamSession.getUsername(), this.steamSession.getToken(), this.steamSession.getSteamId());
         steamClientConnector.sendPacket(packet);
     }
 
@@ -74,7 +71,7 @@ public class SteamClientService {
     }
 
     public void requestDepotKey() {
-        SteamPacket packet = SteamPacketProcessor.buildDepotKeyPacket(DEPOT_ID, steamSession.getSessionId(), steamId);
+        SteamPacket packet = SteamPacketProcessor.buildDepotKeyPacket(DEPOT_ID, steamSession.getSessionId(), this.steamSession.getSteamId());
         steamClientConnector.sendPacket(packet);
     }
 
@@ -83,9 +80,7 @@ public class SteamClientService {
     }
 
     public void prepareLogin(String username, String token, long steamId) {
-        this.username = username;
-        this.token = token;
-        this.steamId = steamId;
+        this.steamSession = SteamCMSessionContext.builder().username(username).token(token).steamId(steamId).build();
     }
 
     @EventListener
@@ -106,8 +101,7 @@ public class SteamClientService {
                 throw new RuntimeException("Steam login failed: " + result);
             }
             int sessionId = packet.getHeader().getClientSessionid();
-            long targetSteamId = packet.getHeader().getSteamid();
-            this.steamSession = new SteamCMSession(sessionId, targetSteamId);
+            this.steamSession.setSessionId(sessionId);
             requestPics();
         } catch (Exception e) {
             throw new RuntimeException("Cannot parse LogonResponse", e);
@@ -119,29 +113,41 @@ public class SteamClientService {
             var response = SteamPacketProcessor.handleProductInfoResponse(packet);
             ContentInfo contentInfo = parsePICSResponseBuffer(response.getAppsList().get(0).getBuffer().toStringUtf8());
             UpdateStatus status = versionsCheckService.checkForUpdates(contentInfo.getGameBuildId(), contentInfo.getManifestId(), (int) Instant.now().getEpochSecond());
-            disconnect();
-            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
-            if (future != null) {
-                future.complete(status);
+            this.steamSession.setBuildVersion(Long.parseLong(contentInfo.getGameBuildId()));
+            this.steamSession.setDepotVersion(Long.parseLong(contentInfo.getManifestId()));
+            if(status.equals(UpdateStatus.NO_UPDATE_NEEDED)) {
+                disconnect();
+                CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
+                if (future != null) {
+                    future.complete(status);
+                }
+                return;
             }
+            requestDepotKey();
         } catch (Exception e) {
-            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
-            if (future != null) {
-                future.completeExceptionally(e);
-            }
-            throw new RuntimeException("Cannot parse PICS response", e);
+            cleanUpAndFail(e);
         }
     }
+
+
 
     private void handleDepotKey(SteamPacket packet) {
         try {
             var response = SteamPacketProcessor.handleDepotKeyResponse(packet);
+            byte[] depotKey = response.getDepotEncryptionKey().toByteArray();
+            versionsCheckService.updateDepotKey(
+                    steamSession.getDepotVersion(),
+                    depotKey
+            );
+            disconnect();
 
-            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamId);
+            CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
+            if (future != null) {
+                future.complete(UpdateStatus.DEPOT_UP_TO_DATE);
+            }
 
         } catch (Exception e) {
-
-            throw new RuntimeException("Cannot parse Depot Key response", e);
+            cleanUpAndFail(e);
         }
     }
 
@@ -163,5 +169,13 @@ public class SteamClientService {
                 .gameBuildId(buildId)
                 .manifestId(manifestId)
                 .build();
+    }
+
+    private void cleanUpAndFail(Exception e) {
+        disconnect();
+        CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
+        if (future != null) {
+            future.completeExceptionally(e);
+        }
     }
 }

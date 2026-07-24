@@ -33,14 +33,19 @@ public class SteamUpdatesController {
             SteamToken token = steamAuthService.getToken(login);
             steamClientService.prepareLogin(login, token.getToken(), token.getSteamId());
 
-            CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect(token.getSteamId());
+            CompletableFuture<UpdateStatus> futureStatus = steamClientService.connect();
             UpdateStatus status = futureStatus.join();
 
             return ResponseEntity.ok(status);
 
         } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            String errorMessage = (cause != null && cause.getMessage() != null)
+                    ? cause.getMessage()
+                    : e.toString();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error checking updates: " + e.getCause().getMessage());
+                    .body("Error checking updates: " + errorMessage);
+
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT)
                     .body("Steam action timed out or failed: " + e.getMessage());

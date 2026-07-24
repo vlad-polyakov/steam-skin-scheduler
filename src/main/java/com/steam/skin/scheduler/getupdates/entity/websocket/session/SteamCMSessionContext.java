@@ -7,7 +7,12 @@ import lombok.*;
 @Setter
 @AllArgsConstructor
 @Builder
-public class SteamCMSession {
+public class SteamCMSessionContext {
     private int sessionId;
     private long steamId;
+    private String username;
+    private String token;
+    private long buildVersion;
+    private long depotVersion;
+    private byte[] depotKey;
 }

@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface DepotVersionRepository extends JpaRepository<DepotVersionEntity, Long> {
     Optional<DepotVersionEntity> findFirstByOrderByIdDesc();
+
+    Optional<DepotVersionEntity> findByManifestId(String manifestId);
 }
