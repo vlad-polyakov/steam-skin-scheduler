@@ -74,6 +74,37 @@ public class SteamPacketProcessor {
         );
     }
 
+    public static SteamPacket buildManifestCodePacket(String depotId, long depotVersion, int sessionId, long steamId) {
+        var body =
+                SteammessagesContentsystemSteamclient.CContentServerDirectory_GetManifestRequestCode_Request.newBuilder()
+                        .setAppId(CS2_APP_ID)
+                        .setDepotId(Integer.parseInt(depotId))
+                        .setManifestId(depotVersion)
+                        .build();
+        SteammessagesBase.CMsgProtoBufHeader header = SteammessagesBase.CMsgProtoBufHeader.newBuilder()
+                .setClientSessionid(sessionId)
+                .setSteamid(steamId)
+                .setTargetJobName("ContentServerDirectory.GetManifestRequestCode#1")
+                .setJobidSource(1L)
+                .setRealm(1)
+                .build();
+        return new SteamPacket(
+                EnumsClientserver.EMsg.k_EMsgServiceMethodCallFromClient_VALUE,
+                true,
+                header,
+                body.toByteArray()
+        );
+    }
+
+    public static SteammessagesContentsystemSteamclient.CContentServerDirectory_GetManifestRequestCode_Response handleManifestCodeResponse(SteamPacket packet) {
+        try {
+            byte[] body = packet.getBodyBytes();
+            return SteammessagesContentsystemSteamclient.CContentServerDirectory_GetManifestRequestCode_Response.parseFrom(body);
+        } catch (Exception e) {
+            throw new RuntimeException("Cannot parse CDN Token response", e);
+        }
+    }
+
     public static CMsgClientGetDepotDecryptionKeyResponse handleDepotKeyResponse(SteamPacket packet) {
         try {
             byte[] body = packet.getBodyBytes();

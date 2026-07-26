@@ -1,11 +1,13 @@
 package com.steam.skin.scheduler.getupdates.service;
 
 import com.steam.protobuf.EnumsClientserver;
+import com.steam.skin.scheduler.content.service.SteamCdnDirectoryService;
 import com.steam.skin.scheduler.getupdates.connector.SteamClientConnector;
 import com.steam.skin.scheduler.getupdates.connector.event.SteamConnectedEvent;
 import com.steam.skin.scheduler.getupdates.connector.event.SteamPacketReceivedEvent;
 import com.steam.skin.scheduler.getupdates.entity.pics.ContentInfo;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
+import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamPacket;
 import com.steam.skin.scheduler.getupdates.entity.websocket.session.SteamCMSessionContext;
 import com.steam.skin.scheduler.getupdates.packet.SteamPacketProcessor;
@@ -31,6 +33,12 @@ public class SteamClientService {
     @Autowired
     private SteamVersionsCheckService versionsCheckService;
 
+    @Autowired
+    private SteamCdnDirectoryService steamCdnDirectoryService;
+
+    @Autowired
+    private SteamContentContext contentContext;
+
     private SteamCMSessionContext steamSession;
     private final Map<Long, CompletableFuture<UpdateStatus>> pendingRequests = new ConcurrentHashMap<>();
 
@@ -49,7 +57,7 @@ public class SteamClientService {
     public CompletableFuture<UpdateStatus> connect() throws Exception {
         CompletableFuture<UpdateStatus> future = new CompletableFuture<>();
         pendingRequests.put(steamSession.getSteamId(), future);
-        future.orTimeout(30, TimeUnit.SECONDS)
+        future.orTimeout(120, TimeUnit.SECONDS)
                 .whenComplete((res, ex) -> pendingRequests.remove(steamSession.getSteamId()));
         steamClientConnector.connect();
         return future;
@@ -90,6 +98,7 @@ public class SteamClientService {
             case EnumsClientserver.EMsg.k_EMsgClientLogOnResponse_VALUE -> handleLogon(packet);
             case EnumsClientserver.EMsg.k_EMsgClientPICSProductInfoResponse_VALUE -> handleProductInfo(packet);
             case EnumsClientserver.EMsg.k_EMsgClientGetDepotDecryptionKeyResponse_VALUE -> handleDepotKey(packet);
+            case EnumsClientserver.EMsg.k_EMsgServiceMethodResponse_VALUE -> handleManifestCode(packet);
         }
     }
 
@@ -113,8 +122,8 @@ public class SteamClientService {
             var response = SteamPacketProcessor.handleProductInfoResponse(packet);
             ContentInfo contentInfo = parsePICSResponseBuffer(response.getAppsList().get(0).getBuffer().toStringUtf8());
             UpdateStatus status = versionsCheckService.checkForUpdates(contentInfo.getGameBuildId(), contentInfo.getManifestId(), (int) Instant.now().getEpochSecond());
-            this.steamSession.setBuildVersion(Long.parseLong(contentInfo.getGameBuildId()));
-            this.steamSession.setDepotVersion(Long.parseLong(contentInfo.getManifestId()));
+            contentContext.setBuildVersion(Long.parseLong(contentInfo.getGameBuildId()));
+            contentContext.setDepotVersion(Long.parseLong(contentInfo.getManifestId()));
             if(status.equals(UpdateStatus.NO_UPDATE_NEEDED)) {
                 disconnect();
                 CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
@@ -135,20 +144,33 @@ public class SteamClientService {
         try {
             var response = SteamPacketProcessor.handleDepotKeyResponse(packet);
             byte[] depotKey = response.getDepotEncryptionKey().toByteArray();
-            versionsCheckService.updateDepotKey(
-                    steamSession.getDepotVersion(),
-                    depotKey
-            );
+            contentContext.setDepotKey(depotKey);
+            requestManifestCode();
+
+        } catch (Exception e) {
+            cleanUpAndFail(e);
+        }
+    }
+
+    private void handleManifestCode(SteamPacket packet) {
+        try {
+            var response = SteamPacketProcessor.handleManifestCodeResponse(packet);
+            long manifestCode = response.getManifestRequestCode();
+            contentContext.setManifestCode(manifestCode);
             disconnect();
 
             CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
             if (future != null) {
                 future.complete(UpdateStatus.DEPOT_UP_TO_DATE);
             }
-
         } catch (Exception e) {
             cleanUpAndFail(e);
         }
+    }
+
+    private void requestManifestCode() {
+        SteamPacket packet = SteamPacketProcessor.buildManifestCodePacket(DEPOT_ID, contentContext.getDepotVersion(), steamSession.getSessionId(), steamSession.getSteamId());
+        steamClientConnector.sendPacket(packet);
     }
 
     private ContentInfo parsePICSResponseBuffer(String buffer) {

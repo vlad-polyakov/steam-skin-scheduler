@@ -1,9 +1,7 @@
 package com.steam.skin.scheduler.getupdates.controller;
 
-import com.steam.skin.scheduler.getupdates.entity.pics.ContentInfo;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.service.SteamClientService;
-import com.steam.skin.scheduler.getupdates.service.SteamVersionsCheckService;
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamToken;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,8 +22,7 @@ public class SteamUpdatesController {
     @Autowired
     private SteamClientService steamClientService;
 
-    @Autowired
-    private SteamVersionsCheckService steamVersionsCheckService;
+
 
     @PostMapping("/check")
     public ResponseEntity<?> checkUpdates(@RequestParam String login) {
@@ -52,9 +49,4 @@ public class SteamUpdatesController {
         }
     }
 
-    @GetMapping("/buildInfo")
-    public ResponseEntity<?> getBuildAndDepotInfo() throws RuntimeException {
-        ContentInfo contentInfo = steamVersionsCheckService.getContentInfoForDownload();
-        return ResponseEntity.ok(contentInfo);
-    }
 }

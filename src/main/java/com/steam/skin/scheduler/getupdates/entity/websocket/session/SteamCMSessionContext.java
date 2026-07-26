@@ -12,7 +12,4 @@ public class SteamCMSessionContext {
     private long steamId;
     private String username;
     private String token;
-    private long buildVersion;
-    private long depotVersion;
-    private byte[] depotKey;
 }

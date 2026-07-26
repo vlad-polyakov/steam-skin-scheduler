@@ -10,5 +10,6 @@ import lombok.*;
 public class ContentInfo {
     private String manifestId;
     private String gameBuildId;
+    private byte[] depotKey;
 
 }

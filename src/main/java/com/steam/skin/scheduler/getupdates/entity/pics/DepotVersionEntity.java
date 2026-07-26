@@ -20,7 +20,4 @@ public class DepotVersionEntity {
 
     @Column(name = "timestamp")
     private int timestamp;
-
-    @Column(name = "depotKey")
-    private byte[] depotKey;
 }
