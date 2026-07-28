@@ -1,5 +1,6 @@
 package com.steam.skin.scheduler.content.service;
 
+import com.google.protobuf.ByteString;
 import com.steam.protobuf.ContentManifest;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,10 +13,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -35,7 +44,7 @@ public class ManifestService {
                 .build();
     }
 
-    public ContentManifest.ContentManifestPayload downloadManifestPayload(String manifestId) throws Exception {
+    public ContentManifest.ContentManifestPayload.FileMapping downloadManifestPayload(String manifestId) throws Exception {
         String cdnHost = steamCdnDirectoryService.getBestCdnHost();
 
         HttpHeaders headers = new HttpHeaders();
@@ -58,14 +67,14 @@ public class ManifestService {
                 byte[].class
         );
         byte[] manifestBytes = response.getBody();
-        return parseManifestBytes(manifestBytes);
+        var payload = parseManifestBytes(manifestBytes);
+        return getPak01DirFile(payload);
     }
 
 
 
-    public ContentManifest.ContentManifestPayload parseManifestBytes(byte[] manifestBytes) throws Exception {
+    private ContentManifest.ContentManifestPayload parseManifestBytes(byte[] manifestBytes) throws Exception {
         ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(manifestBytes));
-
         ZipEntry entry;
         byte[] unzipped = new byte[0];
         while ((entry = zis.getNextEntry()) != null) {
@@ -91,4 +100,42 @@ public class ManifestService {
         }
         return null;
     }
+
+    private ContentManifest.ContentManifestPayload.FileMapping getPak01DirFile(ContentManifest.ContentManifestPayload payload) {
+        return payload.getMappingsList().stream().filter(mapping -> {
+            try {
+                return decryptFilename(mapping.getFilenameBytes()).contains("pak01_dir.vpk");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }).findFirst().orElse(null);
+    }
+
+    private String decryptFilename(ByteString encryptedFilename) throws Exception {
+
+        String base64 = encryptedFilename.toStringUtf8();
+        base64 = base64.replaceAll("\\s+", "");
+        byte[] encryptedBytes = Base64.getDecoder().decode(base64);
+
+        if (encryptedBytes.length < 32) {
+            throw new IllegalArgumentException("Filename data too short");
+        }
+        SecretKeySpec key = new SecretKeySpec(contentContext.getDepotKey(), "AES");
+        Cipher ecb = Cipher.getInstance("AES/ECB/NoPadding");
+        ecb.init(Cipher.DECRYPT_MODE, key);
+
+        byte[] encryptedIV = Arrays.copyOfRange(encryptedBytes, 0, 16);
+        byte[] iv = ecb.doFinal(encryptedIV);
+
+        Cipher cbc = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cbc.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
+        byte[] encryptedName = Arrays.copyOfRange(encryptedBytes, 16, encryptedBytes.length);
+        byte[] decrypted = cbc.doFinal(encryptedName);
+        int len = 0;
+        while (len < decrypted.length && decrypted[len] != 0) {
+            len++;
+        }
+        return new String(decrypted, 0, len, StandardCharsets.UTF_8);
+    }
+
 }

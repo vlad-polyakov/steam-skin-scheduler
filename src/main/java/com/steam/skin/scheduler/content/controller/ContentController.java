@@ -21,7 +21,7 @@ public class ContentController {
     @GetMapping("/manifest")
     public ResponseEntity<?> getManifest() throws Exception {
         ContentInfo contentInfo = steamVersionsCheckService.getContentInfoForDownload();
-        ContentManifest.ContentManifestPayload manifestPayload = manifestService.downloadManifestPayload(contentInfo.getManifestId());
+        ContentManifest.ContentManifestPayload.FileMapping manifestPayload = manifestService.downloadManifestPayload(contentInfo.getManifestId());
         return ResponseEntity.ok(manifestPayload);
     }
 
