@@ -68,5 +68,16 @@ public class SteamVersionsCheckService {
         return ContentInfo.builder().gameBuildId(gameBuild).manifestId(manifestId).depotKey(depotKey).build();
     }
 
+    public void clearVersionTables() {
+        cs2VersionRepository.deleteAll();
+        depotVersionRepository.deleteAll();
+    }
+
+    public void deleteLastVersion() {
+        cs2VersionRepository.findFirstByOrderByIdDesc().ifPresent(cs2VersionRepository::delete);
+        depotVersionRepository.findFirstByOrderByIdDesc().ifPresent(depotVersionRepository::delete);
+
+    }
+
 
 }
