@@ -12,7 +12,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -21,10 +20,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -44,7 +43,7 @@ public class ManifestService {
                 .build();
     }
 
-    public ContentManifest.ContentManifestPayload.FileMapping downloadManifestPayload(String manifestId) throws Exception {
+    public List<ContentManifest.ContentManifestPayload.FileMapping> downloadManifestPayload(String manifestId) throws Exception {
         String cdnHost = steamCdnDirectoryService.getBestCdnHost();
 
         HttpHeaders headers = new HttpHeaders();
@@ -101,14 +100,14 @@ public class ManifestService {
         return null;
     }
 
-    private ContentManifest.ContentManifestPayload.FileMapping getPak01DirFile(ContentManifest.ContentManifestPayload payload) {
+    private List<ContentManifest.ContentManifestPayload.FileMapping> getPak01DirFile(ContentManifest.ContentManifestPayload payload) {
         return payload.getMappingsList().stream().filter(mapping -> {
             try {
-                return decryptFilename(mapping.getFilenameBytes()).contains("pak01_dir.vpk");
+                  return decryptFilename(mapping.getFilenameBytes()).contains("pak01_dir.vpk");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        }).findFirst().orElse(null);
+        }).collect(Collectors.toList());
     }
 
     private String decryptFilename(ByteString encryptedFilename) throws Exception {

@@ -1,7 +1,8 @@
 package com.steam.skin.scheduler.content.service;
 
 import SevenZip.Compression.LZMA.Decoder;
-import com.google.protobuf.ByteString;
+import com.github.luben.zstd.Zstd;
+import com.steam.protobuf.ContentManifest;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import jakarta.annotation.Nonnull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.CRC32;
 
 @Service
@@ -43,30 +45,50 @@ public class FileChunksService {
                 .build();
     }
 
-    public byte[] downloadChunk(ByteString chunkSha, String depotId) throws Exception {
+    public byte[] downloadChunk(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.USER_AGENT, "Valve/Steam HTTP Client 1.0");
         headers.set(HttpHeaders.ACCEPT, "*/*");
 
         HttpEntity<Void> entity = new HttpEntity<>(headers);
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList = fileMapping.getChunksList();
+        byte[] decodedData = new byte[calculateChunksSize(chunkList)];
+        int offset = 0;
+        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: chunkList) {
+            String shaHex = bytesToHex(chunkData.getSha().toByteArray());
+            String url = String.format(
+                    "https://%s/depot/%s/chunk/%s",
+                    steamCdnDirectoryService.getBestCdnHost(),
+                    depotId,
+                    shaHex
+            );
 
-        String shaHex = bytesToHex(chunkSha.toByteArray());
-        String url = String.format(
-                "https://%s/depot/%s/chunk/%s",
-                steamCdnDirectoryService.getBestCdnHost(),
-                depotId,
-                shaHex
-        );
-
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                entity,
-                byte[].class
-        );
-
-        return response.getBody();
+            ResponseEntity<byte[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    byte[].class
+            );
+            byte[] decodedResponse = decodeChunk(response.getBody(), chunkData.getCbOriginal(), Integer.toUnsignedLong(chunkData.getCrc()));
+            offset = appendChunk(decodedData, decodedResponse, offset);
+        }
+        return decodedData;
     }
+
+    private int calculateChunksSize(List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList) {
+        int size = 0;
+        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunk: chunkList) {
+            size += chunk.getCbOriginal();
+        }
+        return size;
+    }
+
+    private int appendChunk(byte[] target, byte[] chunk, int offset) {
+        System.arraycopy(chunk, 0, target, offset, chunk.length);
+        return offset + chunk.length;
+    }
+
+
 
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
@@ -83,15 +105,44 @@ public class FileChunksService {
             int expectedUncompressedSize,
             long expectedChecksum
     ) throws Exception {
+
         byte[] decrypted = decryptChunk(encryptedChunk);
-        byte[] result = decompressVza(decrypted, expectedUncompressedSize);
-        if (result.length != expectedUncompressedSize) {
-            throw new IllegalStateException(
-                    "Invalid decompressed size: actual=" + result.length
-                            + ", expected=" + expectedUncompressedSize
+
+        byte[] result;
+
+        if (isVza(decrypted)) {
+            result = decompressVza(
+                    decrypted,
+                    expectedUncompressedSize
+            );
+        } else if (isVsza(decrypted)) {
+            result = decompressVsza(
+                    decrypted,
+                    expectedUncompressedSize
+            );
+        } else {
+            throw new IOException(
+                    "Unknown chunk compression format: "
+                            + bytesToHex(
+                            Arrays.copyOf(
+                                    decrypted,
+                                    Math.min(16, decrypted.length)
+                            )
+                    )
             );
         }
+
+        if (result.length != expectedUncompressedSize) {
+            throw new IllegalStateException(
+                    "Invalid decompressed size: actual="
+                            + result.length
+                            + ", expected="
+                            + expectedUncompressedSize
+            );
+        }
+
         long actualChecksum = steamAdler32(result);
+
         if (actualChecksum != expectedChecksum) {
             throw new IllegalStateException(
                     "Invalid chunk checksum: actual="
@@ -100,7 +151,7 @@ public class FileChunksService {
                             + Long.toUnsignedString(expectedChecksum)
             );
         }
-        System.out.println(bytesToHex(result));
+
         return result;
     }
 
@@ -117,6 +168,169 @@ public class FileChunksService {
         }
 
         return (b << 16) | a;
+    }
+
+    private boolean isVza(byte[] data) {
+        return data.length >= 3
+                && data[0] == 'V'
+                && data[1] == 'Z'
+                && data[2] == 'a';
+    }
+
+    private boolean isVsza(byte[] data) {
+        return data.length >= 4
+                && data[0] == 'V'
+                && data[1] == 'S'
+                && data[2] == 'Z'
+                && data[3] == 'a';
+    }
+
+    private byte[] decompressVsza(
+            byte[] data,
+            int expectedSize
+    ) throws IOException {
+
+        final int HEADER_LENGTH = 8;
+        final int FOOTER_LENGTH = 15;
+
+        if (data == null) {
+            throw new IOException("VSZa data is null");
+        }
+
+        if (data.length < HEADER_LENGTH + FOOTER_LENGTH) {
+            throw new IOException(
+                    "VSZa data is too short: " + data.length
+            );
+        }
+
+        if (data[0] != 'V'
+                || data[1] != 'S'
+                || data[2] != 'Z'
+                || data[3] != 'a') {
+
+            throw new IOException(
+                    "Invalid VSZa header: "
+                            + bytesToHex(
+                            Arrays.copyOf(
+                                    data,
+                                    Math.min(16, data.length)
+                            )
+                    )
+            );
+        }
+
+        long headerCrc = readUInt32LE(data, 4);
+
+        int footerOffset = data.length - FOOTER_LENGTH;
+
+        long footerCrc = readUInt32LE(
+                data,
+                footerOffset
+        );
+
+        long footerSize = readUInt32LE(
+                data,
+                footerOffset + 4
+        );
+        int tailOffset = data.length - 3;
+
+        if (data[tailOffset] != 'z'
+                || data[tailOffset + 1] != 's'
+                || data[tailOffset + 2] != 'v') {
+
+            throw new IOException(
+                    "Invalid VSZa footer tail: "
+                            + bytesToHex(
+                            Arrays.copyOfRange(
+                                    data,
+                                    Math.max(0, data.length - 32),
+                                    data.length
+                            )
+                    )
+            );
+        }
+        if (footerSize
+                != Integer.toUnsignedLong(expectedSize)) {
+
+            throw new IOException(
+                    "VSZa size mismatch: footer="
+                            + Long.toUnsignedString(footerSize)
+                            + ", manifest="
+                            + Integer.toUnsignedLong(expectedSize)
+            );
+        }
+        int zstdOffset = HEADER_LENGTH;
+
+        int zstdLength = footerOffset - zstdOffset;
+
+        if (zstdLength <= 0) {
+            throw new IOException(
+                    "VSZa Zstd payload is empty"
+            );
+        }
+
+        byte[] zstdData = Arrays.copyOfRange(
+                data,
+                zstdOffset,
+                footerOffset
+        );
+
+        byte[] result = new byte[expectedSize];
+        long decodedSize;
+        try {
+            decodedSize = Zstd.decompress(
+                    result,
+                    zstdData
+            );
+        } catch (Exception e) {
+            throw new IOException(
+                    "Failed to decompress VSZa Zstd payload",
+                    e
+            );
+        }
+        if (Zstd.isError(decodedSize)) {
+            throw new IOException(
+                    "Zstd decompression failed: "
+                            + Zstd.getErrorName(decodedSize)
+            );
+        }
+        if (decodedSize
+                != Integer.toUnsignedLong(expectedSize)) {
+
+            throw new IOException(
+                    "Invalid decompressed size: actual="
+                            + Long.toUnsignedString(decodedSize)
+                            + ", expected="
+                            + Integer.toUnsignedLong(expectedSize)
+            );
+        }
+
+        CRC32 crc32 = new CRC32();
+        crc32.update(result);
+
+        long actualCrc = crc32.getValue();
+        if (actualCrc != headerCrc) {
+
+            throw new IOException(
+                    "VSZa CRC mismatch: actual="
+                            + Long.toUnsignedString(actualCrc)
+                            + ", header="
+                            + Long.toUnsignedString(headerCrc)
+            );
+        }
+
+        if (footerCrc != 0
+                && actualCrc != footerCrc) {
+
+            throw new IOException(
+                    "VSZa footer CRC mismatch: actual="
+                            + Long.toUnsignedString(actualCrc)
+                            + ", footer="
+                            + Long.toUnsignedString(footerCrc)
+            );
+        }
+
+        return result;
     }
 
     private byte[] decryptChunk(byte[] encrypted) throws Exception {

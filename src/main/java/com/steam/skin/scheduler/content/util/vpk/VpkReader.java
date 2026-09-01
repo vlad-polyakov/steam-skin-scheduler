@@ -26,6 +26,10 @@ public class VpkReader {
         }
 
         long treeSize = Integer.toUnsignedLong(buffer.getInt());
+        long fileDataSectionSize = Integer.toUnsignedLong(buffer.getInt());
+        long archiveMd5SectionSize = Integer.toUnsignedLong(buffer.getInt());
+        long otherMd5SectionSize = Integer.toUnsignedLong(buffer.getInt());
+        long signatureSectionSize = Integer.toUnsignedLong(buffer.getInt());
         int treeStart = buffer.position();
         int treeEnd = treeStart + Math.toIntExact(treeSize);
 

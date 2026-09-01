@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/content")
 public class ContentController {
@@ -29,15 +31,11 @@ public class ContentController {
     @GetMapping("/manifest")
     public ResponseEntity<?> getManifest() throws Exception {
         ContentInfo contentInfo = steamVersionsCheckService.getContentInfoForDownload();
-        ContentManifest.ContentManifestPayload.FileMapping manifestPayload = manifestService.downloadManifestPayload(contentInfo.getManifestId());
-        byte[] chunkData = fileChunksService.downloadChunk(manifestPayload.getShaContent(), DEPOT_ID);
-        byte[] decoded = fileChunksService.decodeChunk(
-                chunkData,
-                manifestPayload.getChunks(0).getCbOriginal(),
-                Integer.toUnsignedLong(manifestPayload.getChunks(0).getCrc())
-        );
-        return ResponseEntity.ok(manifestPayload.getFilename());
+        List<ContentManifest.ContentManifestPayload.FileMapping> manifestPayloadList = manifestService.downloadManifestPayload(contentInfo.getManifestId());
+        return ResponseEntity.ok(manifestPayloadList);
     }
+
+
 
     @GetMapping("/chunks")
     public ResponseEntity<?> getChunks() throws Exception {
