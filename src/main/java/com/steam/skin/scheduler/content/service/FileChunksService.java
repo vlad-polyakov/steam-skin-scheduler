@@ -21,7 +21,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.zip.CRC32;
 
@@ -52,9 +54,11 @@ public class FileChunksService {
 
         HttpEntity<Void> entity = new HttpEntity<>(headers);
         List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList = fileMapping.getChunksList();
-        byte[] decodedData = new byte[calculateChunksSize(chunkList)];
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
+
+        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));byte[] decodedData = new byte[calculateChunksSize(chunkList)];
         int offset = 0;
-        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: chunkList) {
+        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: sortedChunks) {
             String shaHex = bytesToHex(chunkData.getSha().toByteArray());
             String url = String.format(
                     "https://%s/depot/%s/chunk/%s",
