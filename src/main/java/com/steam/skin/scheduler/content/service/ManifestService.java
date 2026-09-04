@@ -67,7 +67,7 @@ public class ManifestService {
         );
         byte[] manifestBytes = response.getBody();
         var payload = parseManifestBytes(manifestBytes);
-        return getPak01DirFile(payload);
+        return payload.getMappingsList();
     }
 
 
@@ -100,10 +100,11 @@ public class ManifestService {
         return null;
     }
 
-    private List<ContentManifest.ContentManifestPayload.FileMapping> getPak01DirFile(ContentManifest.ContentManifestPayload payload) {
-        return payload.getMappingsList().stream().filter(mapping -> {
+
+    public List<ContentManifest.ContentManifestPayload.FileMapping> getFilesByDecryptedName(List<ContentManifest.ContentManifestPayload.FileMapping>payload, String filename) {
+        return payload.stream().filter(mapping -> {
             try {
-                  return decryptFilename(mapping.getFilenameBytes()).contains("pak01_dir.vpk");
+                return decryptFilename(mapping.getFilenameBytes()).contains(filename);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

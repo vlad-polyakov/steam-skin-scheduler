@@ -2,7 +2,10 @@ package com.steam.skin.scheduler.content.service;
 
 import SevenZip.Compression.LZMA.Decoder;
 import com.github.luben.zstd.Zstd;
+import com.google.protobuf.ByteString;
 import com.steam.protobuf.ContentManifest;
+import com.steam.skin.scheduler.content.entity.chunk.ChunkIntersection;
+import com.steam.skin.scheduler.content.entity.vpk.VpkEntry;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import jakarta.annotation.Nonnull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,10 +24,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.zip.CRC32;
 
 @Service
@@ -48,35 +48,97 @@ public class FileChunksService {
     }
 
     public byte[] downloadChunk(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId) throws Exception {
+
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList = fileMapping.getChunksList();
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
+
+        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));
+        byte[] decodedData = new byte[calculateChunksSize(chunkList)];
+        int offset = 0;
+        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: sortedChunks) {
+            byte[] response = returnChunkFromRest(chunkData.getSha(), depotId);
+            byte[] decodedResponse = decodeChunk(response, chunkData.getCbOriginal(), Integer.toUnsignedLong(chunkData.getCrc()));
+            offset = appendChunk(decodedData, decodedResponse, offset);
+        }
+        return decodedData;
+    }
+
+    public byte[] downloadRequiredOnlyChunks(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId, VpkEntry vpkEntry) throws Exception {
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
+        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));
+
+        List<ChunkIntersection> chunkIntersectionList = findIntersectingChunks(sortedChunks, vpkEntry);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        for(ChunkIntersection chunkIntersection: chunkIntersectionList) {
+            byte[] response = returnChunkFromRest(chunkIntersection.chunk().getSha(), depotId);
+            byte[] decodedResponse = decodeChunk(response, chunkIntersection.chunk().getCbOriginal(), Integer.toUnsignedLong(chunkIntersection.chunk().getCrc()));
+            byte[] part = Arrays.copyOfRange(
+                    decodedResponse,
+                    Math.toIntExact(chunkIntersection.sourceOffset()),
+                    Math.toIntExact(
+                            chunkIntersection.sourceOffset() + chunkIntersection.length()
+                    )
+            );
+            output.write(part);
+        }
+        return output.toByteArray();
+    }
+
+    public List<ChunkIntersection> findIntersectingChunks(
+            List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunks,
+            VpkEntry entry
+    ) {
+        long fileStart = entry.offset();
+        long fileEnd = fileStart + entry.length();
+
+        return chunks.stream()
+                .map(chunk -> {
+                    long chunkStart = chunk.getOffset();
+                    long chunkEnd = chunkStart + chunk.getCbOriginal();
+
+                    long intersectionStart = Math.max(chunkStart, fileStart);
+                    long intersectionEnd = Math.min(chunkEnd, fileEnd);
+
+                    if (intersectionStart >= intersectionEnd) {
+                        return null;
+                    }
+
+                    return new ChunkIntersection(
+                            chunk,
+                            chunkStart,
+                            intersectionStart - chunkStart,
+                            Math.toIntExact(intersectionEnd - intersectionStart)
+                    );
+                })
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingLong(
+                        x -> x.chunk().getOffset()
+                ))
+                .toList();
+    }
+
+    private byte[] returnChunkFromRest(ByteString sha, String depotId) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.USER_AGENT, "Valve/Steam HTTP Client 1.0");
         headers.set(HttpHeaders.ACCEPT, "*/*");
 
         HttpEntity<Void> entity = new HttpEntity<>(headers);
-        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList = fileMapping.getChunksList();
-        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
+        String shaHex = bytesToHex(sha.toByteArray());
+        String url = String.format(
+                "https://%s/depot/%s/chunk/%s",
+                steamCdnDirectoryService.getBestCdnHost(),
+                depotId,
+                shaHex
+        );
 
-        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));byte[] decodedData = new byte[calculateChunksSize(chunkList)];
-        int offset = 0;
-        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: sortedChunks) {
-            String shaHex = bytesToHex(chunkData.getSha().toByteArray());
-            String url = String.format(
-                    "https://%s/depot/%s/chunk/%s",
-                    steamCdnDirectoryService.getBestCdnHost(),
-                    depotId,
-                    shaHex
-            );
-
-            ResponseEntity<byte[]> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    byte[].class
-            );
-            byte[] decodedResponse = decodeChunk(response.getBody(), chunkData.getCbOriginal(), Integer.toUnsignedLong(chunkData.getCrc()));
-            offset = appendChunk(decodedData, decodedResponse, offset);
-        }
-        return decodedData;
+        ResponseEntity<byte[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                byte[].class
+        );
+        return response.getBody();
     }
 
     private int calculateChunksSize(List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList) {
