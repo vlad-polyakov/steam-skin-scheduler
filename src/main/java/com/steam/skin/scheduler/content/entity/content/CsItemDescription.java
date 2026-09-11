@@ -12,9 +12,9 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class CsRarity {
+public class CsItemDescription {
     @Id
-    private int id;
-    private String rarityKey;
-    private String weaponKey;
+    private String itemKey;
+    private String name;
+    private String nameRussian;
 }
