@@ -2,9 +2,11 @@ package com.steam.skin.scheduler.content.service;
 
 import com.steam.skin.scheduler.content.entity.content.CsItemDescription;
 import com.steam.skin.scheduler.content.entity.content.CsRarity;
+import com.steam.skin.scheduler.content.entity.content.CsWeapon;
 import com.steam.skin.scheduler.content.entity.vdf.VdfNode;
 import com.steam.skin.scheduler.content.repository.CsItemDescriptionRepository;
 import com.steam.skin.scheduler.content.repository.CsRarityRepository;
+import com.steam.skin.scheduler.content.repository.CsWeaponRepository;
 import com.steam.skin.scheduler.content.util.vdf.VdfParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ public class CsContentService {
     private final CsRarityRepository csRarityRepository;
     private final FileDownloadingService fileDownloadingService;
     private final CsItemDescriptionRepository csItemDescriptionRepository;
+    private final CsWeaponRepository csWeaponRepository;
     private VdfNode itemsGameTree;
     private VdfNode csgoEnglishTree;
     private VdfNode csgoRussianTree;
@@ -25,15 +28,11 @@ public class CsContentService {
 
 
     public void fillRaritiesTable() throws Exception {
-        csRarityRepository.deleteAll();
         generateAllTrees();
         List<VdfNode> rarityList = itemsGameTree.first("items_game").get().first("rarities").get().children();
         for (VdfNode rarity: rarityList) {
             int id = Integer.parseInt(rarity.first("value").get().value());
             if(id == 99) {
-                return;
-            }
-            if (csRarityRepository.findById(id).isPresent()) {
                 return;
             }
             String weaponKey = rarity.first("loc_key_weapon").get().value();
@@ -43,6 +42,29 @@ public class CsContentService {
             CsRarity csRarity = new CsRarity(id, key, weaponKey);
             CsItemDescription itemDescription = new CsItemDescription(weaponKey, name, nameRussian);
             csRarityRepository.save(csRarity);
+            csItemDescriptionRepository.save(itemDescription);
+        }
+    }
+
+    public void fillWeaponTable() throws Exception {
+        generateAllTrees();
+        List<VdfNode> weaponList = itemsGameTree.first("items_game").get().first("prefabs").get().children();
+        weaponList = weaponList.stream().filter(weaponNode ->
+                weaponNode.key().startsWith("weapon_") &&
+                !weaponNode.key().equals("weapon_base") &&
+                weaponNode.key().contains("prefab")).toList();
+        for (VdfNode weapon: weaponList) {
+            if (weapon.first("item_class").isEmpty()) {
+                continue;
+            }
+            String itemKey = weapon.first("item_class").get().value();
+            String descrKey = weapon.first("item_name").get().value().substring(1);
+            System.out.println(descrKey);
+            String name = csgoEnglishTree.children().get(0).first("Tokens").get().first(descrKey).get().value();
+            String nameRussian = csgoRussianTree.children().get(0).first("Tokens").get().first(descrKey).get().value();
+            CsWeapon csWeapon = new CsWeapon(itemKey, descrKey);
+            CsItemDescription itemDescription = new CsItemDescription(descrKey, name, nameRussian);
+            csWeaponRepository.save(csWeapon);
             csItemDescriptionRepository.save(itemDescription);
         }
     }

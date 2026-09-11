@@ -59,13 +59,13 @@ public final class VdfNode {
 
     public Optional<VdfNode> first(String key) {
         return children.stream()
-                .filter(child -> child.key.equals(key))
+                .filter(child -> child.key.equalsIgnoreCase(key))
                 .findFirst();
     }
 
     public List<VdfNode> findAll(String key) {
         return children.stream()
-                .filter(child -> child.key.equals(key))
+                .filter(child -> child.key.equalsIgnoreCase(key))
                 .toList();
     }
 

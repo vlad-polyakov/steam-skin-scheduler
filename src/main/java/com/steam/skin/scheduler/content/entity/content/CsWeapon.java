@@ -10,11 +10,10 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
-@AllArgsConstructor
 @NoArgsConstructor
-public class CsRarity {
+@AllArgsConstructor
+public class CsWeapon {
     @Id
-    private int id;
-    private String rarityKey;
+    private String itemKey;
     private String descrKey;
 }
