@@ -11,12 +11,13 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class CsRarity {
+public class CsItemSet {
 
     @Id
-    private int id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
 
-    private String rarityKey;
+    private String itemSetKey;
 
     @OneToOne
     @JoinColumn(name = "item_description")

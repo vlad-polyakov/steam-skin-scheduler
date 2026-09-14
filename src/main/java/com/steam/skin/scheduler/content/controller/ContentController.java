@@ -26,6 +26,8 @@ public class ContentController {
     @PostMapping("/update/data")
     public ResponseEntity<?> updateDatabase() throws Exception {
         csContentService.fillRaritiesTable();
+        csContentService.fillWeaponTable();
+        csContentService.fillItemSetTable();
         //TODO add other tables
         return ResponseEntity.ok(null);
     }

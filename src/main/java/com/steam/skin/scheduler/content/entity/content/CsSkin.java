@@ -11,15 +11,31 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class CsWeapon {
+public class CsSkin {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    private String itemKey;
+    @JoinColumn(name = "skin_key")
+    private String skinKey;
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "item_description")
     private CsItemDescription itemDescription;
+
+    @ManyToOne
+    @JoinColumn(name = "weapon")
+    private CsWeapon weapon;
+
+    @ManyToOne
+    @JoinColumn(name = "rarity")
+    private CsRarity rarity;
+
+    @ManyToOne
+    @JoinColumn(name = "itemSet")
+    private CsItemSet itemSet;
+
+    private float minFloat;
+    private float maxFloat;
 }
