@@ -34,9 +34,6 @@ public class SteamClientService {
     private SteamVersionsCheckService versionsCheckService;
 
     @Autowired
-    private SteamCdnDirectoryService steamCdnDirectoryService;
-
-    @Autowired
     private SteamContentContext contentContext;
 
     private SteamCMSessionContext steamSession;
@@ -161,7 +158,7 @@ public class SteamClientService {
 
             CompletableFuture<UpdateStatus> future = pendingRequests.remove(this.steamSession.getSteamId());
             if (future != null) {
-                future.complete(UpdateStatus.DEPOT_UP_TO_DATE);
+                future.complete(UpdateStatus.UPDATE_REQUIRED);
             }
         } catch (Exception e) {
             cleanUpAndFail(e);

@@ -1,5 +1,6 @@
 package com.steam.skin.scheduler.content.service;
 
+import com.steam.skin.scheduler.content.entity.TableUpdateStatus;
 import com.steam.skin.scheduler.content.entity.content.*;
 import com.steam.skin.scheduler.content.entity.vdf.VdfNode;
 import com.steam.skin.scheduler.content.repository.*;
@@ -30,14 +31,15 @@ public class CsContentService {
 
 
 
-    public void fillRaritiesTable() throws Exception {
+    public TableUpdateStatus fillRaritiesTable() throws Exception {
         generateAllTrees();
+        TableUpdateStatus status = TableUpdateStatus.NO_CONTENT_UPDATE;
         List<VdfNode> rarityList = itemsGameTree.first("items_game").get().first("rarities").get().children();
         List<String> existingKeysList = csRarityRepository.findAllItemKeys();
         for (VdfNode rarity: rarityList) {
             int id = Integer.parseInt(rarity.first("value").get().value());
             if(id == 99) {
-                return;
+                return status;
             }
             String weaponKey = rarity.first("loc_key_weapon").get().value();
             String key = rarity.key();
@@ -50,12 +52,14 @@ public class CsContentService {
             CsRarity csRarity = new CsRarity(id, key, itemDescription);
             checkAndSaveItemDescription(itemDescription);
             csRarityRepository.save(csRarity);
-
+            status = TableUpdateStatus.UPDATED_SUCCESSFULLY;
         }
+        return status;
     }
 
-    public void fillWeaponTable() throws Exception {
+    public TableUpdateStatus fillWeaponTable() throws Exception {
         generateAllTrees();
+        TableUpdateStatus status = TableUpdateStatus.NO_CONTENT_UPDATE;
         List<VdfNode> weaponList = itemsGameTree.first("items_game").get().first("prefabs").get().children();
         weaponList = weaponList.stream().filter(weaponNode ->
                 weaponNode.key().startsWith("weapon_") &&
@@ -77,11 +81,14 @@ public class CsContentService {
             CsWeapon csWeapon = new CsWeapon(null, itemKey, itemDescription);
             checkAndSaveItemDescription(itemDescription);
             csWeaponRepository.save(csWeapon);
+            status = TableUpdateStatus.UPDATED_SUCCESSFULLY;
         }
+        return status;
     }
 
-    public void fillItemSetTable() throws Exception {
+    public TableUpdateStatus fillItemSetTable() throws Exception {
         generateAllTrees();
+        TableUpdateStatus status = TableUpdateStatus.NO_CONTENT_UPDATE;
         List<VdfNode> itemSetList = itemsGameTree.first("items_game").get().first("item_sets").get().children();
         List<String> existingKeysList = csItemSetRepository.findAllItemKeys();
         for(VdfNode itemSet: itemSetList) {
@@ -97,7 +104,9 @@ public class CsContentService {
             csItemSetRepository.save(csItemSet);
             List<VdfNode> skinsList = itemSet.first("items").get().children();
             fillSkinsTable(skinsList, csItemSet);
+            status = TableUpdateStatus.UPDATED_SUCCESSFULLY;
         }
+        return status;
     }
 
     private void fillSkinsTable(List<VdfNode> skinsList, CsItemSet itemSet) {

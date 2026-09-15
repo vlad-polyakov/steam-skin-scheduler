@@ -1,5 +1,7 @@
 package com.steam.skin.scheduler.content.controller;
 
+import com.steam.skin.scheduler.content.entity.content.TableMultiStatus;
+import com.steam.skin.scheduler.content.service.ContentOrchestratorService;
 import com.steam.skin.scheduler.content.service.CsContentService;
 import com.steam.skin.scheduler.content.service.FileDownloadingService;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ContentController {
 
     private final FileDownloadingService fileDownloadingService;
-    private final CsContentService csContentService;
+    private final ContentOrchestratorService csContentService;
 
 
     @GetMapping("/file/download")
@@ -24,11 +26,8 @@ public class ContentController {
     }
 
     @PostMapping("/update/data")
-    public ResponseEntity<?> updateDatabase() throws Exception {
-        csContentService.fillRaritiesTable();
-        csContentService.fillWeaponTable();
-        csContentService.fillItemSetTable();
-        //TODO add other tables
-        return ResponseEntity.ok(null);
+    public ResponseEntity<?> updateDatabase(String login) throws Exception {
+        TableMultiStatus result = csContentService.updateContentTables(login);
+        return ResponseEntity.ok(result);
     }
 }
