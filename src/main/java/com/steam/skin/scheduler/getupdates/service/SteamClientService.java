@@ -11,6 +11,7 @@ import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentC
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamPacket;
 import com.steam.skin.scheduler.getupdates.entity.websocket.session.SteamCMSessionContext;
 import com.steam.skin.scheduler.getupdates.packet.SteamPacketProcessor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -24,17 +25,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
+@RequiredArgsConstructor
 public class SteamClientService {
 
 
-    @Autowired
-    private SteamClientConnector steamClientConnector;
-
-    @Autowired
-    private SteamVersionsCheckService versionsCheckService;
-
-    @Autowired
-    private SteamContentContext contentContext;
+    private final SteamClientConnector steamClientConnector;
+    private final SteamVersionsCheckService versionsCheckService;
+    private final SteamContentContext contentContext;
 
     private SteamCMSessionContext steamSession;
     private final Map<Long, CompletableFuture<UpdateStatus>> pendingRequests = new ConcurrentHashMap<>();

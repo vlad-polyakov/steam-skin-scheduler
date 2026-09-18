@@ -3,6 +3,7 @@ package com.steam.skin.scheduler.content.service;
 import com.google.protobuf.ByteString;
 import com.steam.protobuf.ContentManifest;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -28,20 +29,13 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 @Service
+@RequiredArgsConstructor
 public class ManifestService {
     private static final String DEPOT_ID = "2347770";
+
     private final RestTemplate restTemplate;
-
-    @Autowired
-    private SteamContentContext contentContext;
-
-    @Autowired
-    private SteamCdnDirectoryService steamCdnDirectoryService;
-
-    public ManifestService(RestTemplateBuilder restTemplateBuilder) {
-        this.restTemplate = restTemplateBuilder.connectTimeout(Duration.ofSeconds(10)).readTimeout(Duration.ofSeconds(15))
-                .build();
-    }
+    private final SteamContentContext contentContext;
+    private final SteamCdnDirectoryService steamCdnDirectoryService;
 
     public List<ContentManifest.ContentManifestPayload.FileMapping> downloadManifestPayload(String manifestId) throws Exception {
         String cdnHost = steamCdnDirectoryService.getBestCdnHost();

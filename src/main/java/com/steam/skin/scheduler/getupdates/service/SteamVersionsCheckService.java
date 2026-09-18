@@ -6,6 +6,7 @@ import com.steam.skin.scheduler.getupdates.entity.pics.DepotVersionEntity;
 import com.steam.skin.scheduler.getupdates.entity.pics.UpdateStatus;
 import com.steam.skin.scheduler.getupdates.repository.CS2VersionRepository;
 import com.steam.skin.scheduler.getupdates.repository.DepotVersionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,13 +14,11 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class SteamVersionsCheckService {
 
-    @Autowired
-    private CS2VersionRepository cs2VersionRepository;
-
-    @Autowired
-    private DepotVersionRepository depotVersionRepository;
+    private final CS2VersionRepository cs2VersionRepository;
+    private final DepotVersionRepository depotVersionRepository;
 
     public UpdateStatus checkForUpdates(String parsedBuildId, String parsedManifestId, int currentTimestamp) {
 

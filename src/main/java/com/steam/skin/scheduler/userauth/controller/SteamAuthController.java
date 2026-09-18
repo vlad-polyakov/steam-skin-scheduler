@@ -2,6 +2,7 @@ package com.steam.skin.scheduler.userauth.controller;
 
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.creds.Credentials;
 import com.steam.skin.scheduler.userauth.service.SteamAuthService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,10 +16,10 @@ import java.security.spec.InvalidKeySpecException;
 
 @RestController
 @RequestMapping("/auth/steam")
+@RequiredArgsConstructor
 public class SteamAuthController {
 
-    @Autowired
-    private SteamAuthService steamAuthService;
+    private final SteamAuthService steamAuthService;
 
     @PostMapping("/session")
     public ResponseEntity<?> steamSessionTrigger(Credentials request) throws IllegalBlockSizeException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeySpecException, BadPaddingException, InvalidKeyException {

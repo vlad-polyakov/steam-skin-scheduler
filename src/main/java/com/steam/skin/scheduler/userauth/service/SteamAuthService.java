@@ -8,6 +8,7 @@ import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamAut
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamAuthTokenInfoResponse;
 import com.steam.skin.scheduler.userauth.entity.steam.auth.common.token.SteamToken;
 import com.steam.skin.scheduler.userauth.repository.SteamTokenRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -33,6 +34,7 @@ import java.time.Instant;
 import java.util.Base64;
 
 @Service
+@RequiredArgsConstructor
 public class SteamAuthService {
 
     private final RestTemplate restTemplate;
@@ -47,12 +49,7 @@ public class SteamAuthService {
 
     private SteamSessionLoginResponse steamSession;
 
-    @Autowired
-    private SteamTokenRepository tokenRepository;
-
-    public SteamAuthService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
+    private final SteamTokenRepository tokenRepository;
 
     private RSASteamKeyResponse getSteamRsaKey(String accountName) {
         try {

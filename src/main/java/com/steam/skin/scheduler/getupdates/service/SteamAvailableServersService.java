@@ -1,6 +1,7 @@
 package com.steam.skin.scheduler.getupdates.service;
 
 import com.steam.skin.scheduler.getupdates.entity.availableservers.SteamCMContainerResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -10,14 +11,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class SteamAvailableServersService {
 
     private final RestTemplate restTemplate;
     private static final String SERVERS_ENDPOINT = "https://api.steampowered.com/ISteamDirectory/GetCMList/v1/?cellid=0";
-
-    public SteamAvailableServersService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
 
     public List<String> getWebSocketServers() {
         try {

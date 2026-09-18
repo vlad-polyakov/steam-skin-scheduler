@@ -13,7 +13,6 @@ import java.util.concurrent.CompletionException;
 @RequiredArgsConstructor
 public class SteamUpdateOrchestratorService {
 
-
     private final SteamAuthService steamAuthService;
     private final SteamClientService steamClientService;
 

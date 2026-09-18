@@ -1,5 +1,6 @@
 package com.steam.skin.scheduler.content.entity.vpk;
 
+
 public record VpkEntry(
         String path,
         String filename,

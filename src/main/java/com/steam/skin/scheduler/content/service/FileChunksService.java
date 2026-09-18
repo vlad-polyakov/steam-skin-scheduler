@@ -8,6 +8,7 @@ import com.steam.skin.scheduler.content.entity.chunk.ChunkIntersection;
 import com.steam.skin.scheduler.content.entity.vpk.VpkEntry;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import jakarta.annotation.Nonnull;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -28,24 +29,15 @@ import java.util.*;
 import java.util.zip.CRC32;
 
 @Service
+@RequiredArgsConstructor
 public class FileChunksService {
 
 
 
     private final RestTemplate restTemplate;
+    private final SteamCdnDirectoryService steamCdnDirectoryService;
+    private final SteamContentContext steamContentContext;
 
-    @Autowired
-    private SteamCdnDirectoryService steamCdnDirectoryService;
-
-    @Autowired
-    private SteamContentContext steamContentContext;
-
-    public FileChunksService(RestTemplateBuilder restTemplateBuilder) {
-        this.restTemplate = restTemplateBuilder
-                .connectTimeout(Duration.ofSeconds(10))
-                .readTimeout(Duration.ofSeconds(15))
-                .build();
-    }
 
     public byte[] downloadChunk(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId) throws Exception {
 

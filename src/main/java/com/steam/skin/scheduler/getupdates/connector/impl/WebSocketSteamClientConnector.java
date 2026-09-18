@@ -30,6 +30,7 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -39,13 +40,11 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Component
+@RequiredArgsConstructor
 public class WebSocketSteamClientConnector implements SteamClientConnector {
 
-    @Autowired
-    private SteamAvailableServersService availableServersService;
-
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
+    private final SteamAvailableServersService availableServersService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Getter
     private Channel channel;
