@@ -30,15 +30,14 @@ public class CsContentService {
     private VdfNode csgoRussianTree;
 
 
-
     public TableUpdateStatus fillRaritiesTable() throws Exception {
         generateAllTrees();
         TableUpdateStatus status = TableUpdateStatus.NO_CONTENT_UPDATE;
         List<VdfNode> rarityList = itemsGameTree.first("items_game").get().first("rarities").get().children();
         List<String> existingKeysList = csRarityRepository.findAllItemKeys();
-        for (VdfNode rarity: rarityList) {
+        for (VdfNode rarity : rarityList) {
             int id = Integer.parseInt(rarity.first("value").get().value());
-            if(id == 99) {
+            if (id == 99) {
                 return status;
             }
             String weaponKey = rarity.first("loc_key_weapon").get().value();
@@ -63,16 +62,16 @@ public class CsContentService {
         List<VdfNode> weaponList = itemsGameTree.first("items_game").get().first("prefabs").get().children();
         weaponList = weaponList.stream().filter(weaponNode ->
                 weaponNode.key().startsWith("weapon_") &&
-                !weaponNode.key().equals("weapon_base") &&
-                weaponNode.key().contains("prefab")).toList();
+                        !weaponNode.key().equals("weapon_base") &&
+                        weaponNode.key().contains("prefab")).toList();
         List<String> existingKeys = csWeaponRepository.findAllItemKeys();
-        for (VdfNode weapon: weaponList) {
+        for (VdfNode weapon : weaponList) {
             if (weapon.first("item_class").isEmpty()) {
                 continue;
             }
             String itemKey = weapon.key();
             String descrKey = weapon.first("item_name").get().value().substring(1);
-            if(existingKeys != null && existingKeys.contains(itemKey)) {
+            if (existingKeys != null && existingKeys.contains(itemKey)) {
                 continue;
             }
             String name = csgoEnglishTree.children().get(0).first("Tokens").get().first(descrKey).get().value();
@@ -91,9 +90,9 @@ public class CsContentService {
         TableUpdateStatus status = TableUpdateStatus.NO_CONTENT_UPDATE;
         List<VdfNode> itemSetList = itemsGameTree.first("items_game").get().first("item_sets").get().children();
         List<String> existingKeysList = csItemSetRepository.findAllItemKeys();
-        for(VdfNode itemSet: itemSetList) {
+        for (VdfNode itemSet : itemSetList) {
             String itemKey = itemSet.first("name").get().value().substring(1);
-            if(existingKeysList != null && existingKeysList.contains(itemSet.key())) {
+            if (existingKeysList != null && existingKeysList.contains(itemSet.key())) {
                 continue;
             }
             String name = csgoEnglishTree.children().get(0).first("Tokens").get().first(itemKey).get().value();
@@ -119,7 +118,7 @@ public class CsContentService {
                 children().stream().filter(item -> item.key().equals("paint_kits")).toList();
         List<VdfNode> commonSkinsList = new ArrayList<>();
         allSkinsList.forEach(skinItem -> commonSkinsList.addAll(skinItem.children()));
-        for(VdfNode skin: skinsList) {
+        for (VdfNode skin : skinsList) {
             String key = skin.key();
             String skinKey;
             String weaponKey = null;
@@ -140,8 +139,8 @@ public class CsContentService {
 
             VdfNode foundRarity =
                     paintRarityCommonList.stream().
-                    filter(paintKitRarity -> paintKitRarity.key().
-                            equals(skinKey)).findFirst().get();
+                            filter(paintKitRarity -> paintKitRarity.key().
+                                    equals(skinKey)).findFirst().get();
             CsRarity csRarity = csRarityRepository.findByRarityKey(foundRarity.value()).get();
 
             VdfNode foundSkin = commonSkinsList.stream().
@@ -157,8 +156,7 @@ public class CsContentService {
                 minFloat = Float.parseFloat(foundSkin.first("wear_remap_min").get().value());
                 maxFloat = Float.parseFloat(foundSkin.first("wear_remap_max").get().value());
 
-            }
-            catch (NoSuchElementException exception) {
+            } catch (NoSuchElementException exception) {
                 //do nothing
             }
             checkAndSaveItemDescription(itemDescription);
@@ -188,16 +186,38 @@ public class CsContentService {
     }
 
     private void generateCsgoRussianTree() throws Exception {
-        if(this.csgoRussianTree == null) {
+        if (this.csgoRussianTree == null) {
             byte[] data = fileDownloadingService.downloadFile("csgo_russian");
             this.csgoRussianTree = VdfParser.parse(data);
         }
     }
 
-    private void generateAllTrees() throws Exception {
-        generateCsgoRussianTree();
-        generateItemsGameTree();
-        generateCsgoEnglishTree();
+    private void generateAllTrees() {
+        List<Runnable> tasks = List.of(
+                () -> {
+                    try {
+                        generateItemsGameTree();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                },
+                () -> {
+                    try {
+                        generateCsgoEnglishTree();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                },
+                () -> {
+                    try {
+                        generateCsgoRussianTree();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+        );
+
+        tasks.parallelStream().forEach(Runnable::run);
     }
 
 }

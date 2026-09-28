@@ -9,14 +9,11 @@ import com.steam.skin.scheduler.content.entity.vpk.VpkEntry;
 import com.steam.skin.scheduler.getupdates.entity.websocket.packet.SteamContentContext;
 import jakarta.annotation.Nonnull;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -24,7 +21,6 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.*;
 import java.util.zip.CRC32;
 
@@ -32,47 +28,103 @@ import java.util.zip.CRC32;
 @RequiredArgsConstructor
 public class FileChunksService {
 
+    private static final int DOWNLOAD_CONCURRENCY = 12;
 
-
-    private final RestTemplate restTemplate;
+    private final WebClient contentWebClient;
     private final SteamCdnDirectoryService steamCdnDirectoryService;
     private final SteamContentContext steamContentContext;
 
 
-    public byte[] downloadChunk(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId) throws Exception {
+    public byte[] downloadChunk(
+            ContentManifest.ContentManifestPayload.FileMapping fileMapping,
+            String depotId
+    ) {
+        long start = System.nanoTime();
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks =
+                new ArrayList<>(fileMapping.getChunksList());
 
-        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList = fileMapping.getChunksList();
-        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
+        sortedChunks.sort(
+                Comparator.comparingLong(
+                        ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset
+                )
+        );
 
-        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));
-        byte[] decodedData = new byte[calculateChunksSize(chunkList)];
+        List<byte[]> decodedChunks =
+                Flux.fromIterable(sortedChunks)
+                        .flatMapSequential(
+                                chunk -> downloadAndDecodeChunk(chunk, depotId),
+                                DOWNLOAD_CONCURRENCY
+                        )
+                        .collectList()
+                        .block();
+
+        int totalSize = calculateChunksSize(sortedChunks);
+
+        byte[] result = new byte[totalSize];
+
         int offset = 0;
-        for(ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunkData: sortedChunks) {
-            byte[] response = returnChunkFromRest(chunkData.getSha(), depotId);
-            byte[] decodedResponse = decodeChunk(response, chunkData.getCbOriginal(), Integer.toUnsignedLong(chunkData.getCrc()));
-            offset = appendChunk(decodedData, decodedResponse, offset);
+
+        for (byte[] chunk : decodedChunks) {
+            System.arraycopy(
+                    chunk,
+                    0,
+                    result,
+                    offset,
+                    chunk.length
+            );
+
+            offset += chunk.length;
         }
-        return decodedData;
+
+        return result;
     }
 
-    public byte[] downloadRequiredOnlyChunks(ContentManifest.ContentManifestPayload.FileMapping fileMapping, String depotId, VpkEntry vpkEntry) throws Exception {
-        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks = new ArrayList<>(fileMapping.getChunksList());
-        sortedChunks.sort(Comparator.comparingLong(ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset));
+    public byte[] downloadRequiredOnlyChunks(
+            ContentManifest.ContentManifestPayload.FileMapping fileMapping,
+            String depotId,
+            VpkEntry vpkEntry
+    ) {
+        long start = System.nanoTime();
+        List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> sortedChunks =
+                new ArrayList<>(fileMapping.getChunksList());
 
-        List<ChunkIntersection> chunkIntersectionList = findIntersectingChunks(sortedChunks, vpkEntry);
+        sortedChunks.sort(
+                Comparator.comparingLong(
+                        ContentManifest.ContentManifestPayload.FileMapping.ChunkData::getOffset
+                )
+        );
+
+        List<ChunkIntersection> intersections =
+                findIntersectingChunks(sortedChunks, vpkEntry);
+
+        List<byte[]> parts =
+                Flux.fromIterable(intersections)
+                        .flatMapSequential(
+                                intersection ->
+                                        downloadAndDecodeChunk(
+                                                intersection.chunk(),
+                                                depotId
+                                        ).map(decoded ->
+                                                Arrays.copyOfRange(
+                                                        decoded,
+                                                        Math.toIntExact(
+                                                                intersection.sourceOffset()
+                                                        ),
+                                                        Math.toIntExact(
+                                                                intersection.sourceOffset()
+                                                                        + intersection.length()
+                                                        )
+                                                )
+                                        ),
+                                DOWNLOAD_CONCURRENCY
+                        )
+                        .collectList()
+                        .block();
+
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-        for(ChunkIntersection chunkIntersection: chunkIntersectionList) {
-            byte[] response = returnChunkFromRest(chunkIntersection.chunk().getSha(), depotId);
-            byte[] decodedResponse = decodeChunk(response, chunkIntersection.chunk().getCbOriginal(), Integer.toUnsignedLong(chunkIntersection.chunk().getCrc()));
-            byte[] part = Arrays.copyOfRange(
-                    decodedResponse,
-                    Math.toIntExact(chunkIntersection.sourceOffset()),
-                    Math.toIntExact(
-                            chunkIntersection.sourceOffset() + chunkIntersection.length()
-                    )
-            );
-            output.write(part);
+        for (byte[] part : parts) {
+            output.writeBytes(part);
         }
         return output.toByteArray();
     }
@@ -110,13 +162,9 @@ public class FileChunksService {
                 .toList();
     }
 
-    private byte[] returnChunkFromRest(ByteString sha, String depotId) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.USER_AGENT, "Valve/Steam HTTP Client 1.0");
-        headers.set(HttpHeaders.ACCEPT, "*/*");
-
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
+    private Mono<byte[]> returnChunkFromRest(ByteString sha, String depotId) {
         String shaHex = bytesToHex(sha.toByteArray());
+
         String url = String.format(
                 "https://%s/depot/%s/chunk/%s",
                 steamCdnDirectoryService.getBestCdnHost(),
@@ -124,13 +172,27 @@ public class FileChunksService {
                 shaHex
         );
 
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                entity,
-                byte[].class
-        );
-        return response.getBody();
+        return contentWebClient
+                .get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(byte[].class);
+    }
+
+    private Mono<byte[]> downloadAndDecodeChunk(
+            ContentManifest.ContentManifestPayload.FileMapping.ChunkData chunk,
+            String depotId
+    ) {
+        return returnChunkFromRest(chunk.getSha(), depotId)
+                .flatMap(data ->
+                        Mono.fromCallable(() ->
+                                decodeChunk(
+                                        data,
+                                        chunk.getCbOriginal(),
+                                        Integer.toUnsignedLong(chunk.getCrc())
+                                )
+                        ).subscribeOn(Schedulers.parallel())
+                );
     }
 
     private int calculateChunksSize(List<ContentManifest.ContentManifestPayload.FileMapping.ChunkData> chunkList) {
@@ -527,4 +589,5 @@ public class FileChunksService {
                 | (((long) data[offset + 2] & 0xFF) << 16)
                 | (((long) data[offset + 3] & 0xFF) << 24);
     }
+
 }
